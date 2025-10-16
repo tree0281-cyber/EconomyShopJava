@@ -1,4 +1,4 @@
-name: Build Java Paper Plugin (dev-bundle, no Gradle)
+name: Build Java Paper Plugin (auto dev-bundle, no Gradle)
 
 on:
   push:
@@ -10,8 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      VERSION: "1.21.1"
-      BUILD: "180"
+      VERSION: "1.21.1"                  # 필요하면 1.21.x 로 바꿀 수 있음
       PLUGIN_NAME: "EconomyShopJava-1.0.0.jar"
 
     steps:
@@ -24,13 +23,44 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
 
+    - name: Install jq (for JSON parsing)
+      run: sudo apt-get update && sudo apt-get install -y jq
+
+    - name: Resolve latest Paper dev-bundle URL
+      id: resolve
+      shell: bash
+      run: |
+        set -e
+        BASE="https://api.papermc.io/v2/projects/paper/versions/${VERSION}"
+
+        echo "Fetching builds list for version ${VERSION} ..."
+        BUILDS_JSON=$(curl -sSfL "$BASE/builds")
+
+        # 최신 빌드 번호 가져오기 (API가 배열/객체 둘 다 가능해서 양쪽 대응)
+        BUILD=$(echo "$BUILDS_JSON" | jq -r '.builds | (.[-1].build // .[-1])')
+        echo "Latest build: $BUILD"
+
+        # 해당 빌드의 다운로드 목록에서 dev-bundle 파일명 찾기
+        BUILD_JSON=$(curl -sSfL "$BASE/builds/${BUILD}")
+        NAME=$(echo "$BUILD_JSON" | jq -r '.downloads | to_entries[] | select(.key|test("dev.*bundle|dev-bundle"; "i")) | .value.name')
+
+        if [ -z "$NAME" ] || [ "$NAME" = "null" ]; then
+          echo "Could not find dev-bundle name in build $BUILD"
+          echo "$BUILD_JSON"
+          exit 1
+        fi
+
+        URL="$BASE/builds/${BUILD}/downloads/${NAME}"
+        echo "Dev-bundle URL: $URL"
+
+        echo "BUILD=${BUILD}"              >> "$GITHUB_OUTPUT"
+        echo "DEV_BUNDLE_URL=${URL}"       >> "$GITHUB_OUTPUT"
+        echo "DEV_BUNDLE_NAME=${NAME}"     >> "$GITHUB_OUTPUT"
+
     - name: Download Paper dev-bundle
       run: |
-        URL="https://api.papermc.io/v2/projects/paper/versions/${VERSION}/builds/${BUILD}/downloads/paper-${VERSION}-${BUILD}-dev-bundle.zip"
-        echo "Downloading dev-bundle: $URL"
-        curl -fL "$URL" -o dev-bundle.zip
+        curl -fL "${{ steps.resolve.outputs.DEV_BUNDLE_URL }}" -o dev-bundle.zip
         unzip -q dev-bundle.zip -d dev
-
         echo "Dev bundle contents:"
         ls -R dev
 
@@ -38,26 +68,21 @@ jobs:
       id: cp
       shell: bash
       run: |
-        # dev-bundle 안에는 paper-api jar와 의존 jar들이 들어있음
+        set -e
         API_JAR=$(find dev -maxdepth 1 -name "paper-api-*.jar" | head -n1)
         LIB_DIR=$(find dev -type d -name "libs" | head -n1)
+        [ -n "$API_JAR" ] && [ -d "$LIB_DIR" ] || { echo "Missing API jar or libs dir"; exit 1; }
 
-        if [ -z "$API_JAR" ] || [ -z "$LIB_DIR" ]; then
-          echo "Missing API jar or libs dir in dev bundle"; exit 1
-        fi
-
-        # classpath: API + 모든 libs/*.jar
         CP="$API_JAR:$(echo $LIB_DIR/*.jar | tr ' ' ':')"
-        echo "CLASSPATH=$CP" >> $GITHUB_OUTPUT
+        echo "CLASSPATH=$CP" >> "$GITHUB_OUTPUT"
+        echo "API_JAR=$API_JAR"
+        echo "LIB_DIR=$LIB_DIR"
 
-        echo "API_JAR: $API_JAR"
-        echo "LIB_DIR: $LIB_DIR"
-
-    - name: Compile sources with javac (using dev-bundle CP)
+    - name: Compile sources with javac
       run: |
         mkdir -p out
         SRCS=$(find . -name "*.java")
-        echo "Sources:"
+        echo "Compiling:"
         echo "$SRCS"
         javac -Xlint:unchecked -cp "${{ steps.cp.outputs.CLASSPATH }}" -d out $SRCS
 
