@@ -1,0 +1,26 @@
+name: EconomyShopJava
+main: com.markmode.economyshop.EconomyShopPlugin
+version: ${version}
+api-version: '1.21'
+author: mark-mode
+commands:
+  bal:
+    description: Show your balance
+  balance:
+    description: Show your balance
+  pay:
+    description: Pay another player
+    usage: /pay <player> <amount>
+  eco:
+    description: Admin economy control
+    usage: /eco set|add|take <player> <amount>
+  shop:
+    description: Open the shop GUI
+  shopnpc:
+    description: Spawn/remove a Shop NPC
+    usage: /shopnpc spawn|remove
+permissions:
+  econshop.eco:
+    default: op
+  econshop.shopnpc:
+    default: op

@@ -1,0 +1,22 @@
+start-money: 100
+currency-symbol: ""
+
+categories:
+  음식:
+    - item: BREAD
+      amount: 8
+      buy: 20
+      sell: 8
+    - item: COOKED_BEEF
+      amount: 4
+      buy: 25
+      sell: 10
+  광물:
+    - item: IRON_INGOT
+      amount: 4
+      buy: 40
+      sell: 18
+    - item: DIAMOND
+      amount: 1
+      buy: 120
+      sell: 60
