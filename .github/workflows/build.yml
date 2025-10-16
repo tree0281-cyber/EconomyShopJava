@@ -1,4 +1,4 @@
-name: Build Paper Plugin
+name: Build Java Paper Plugin (no Gradle)
 
 on:
   push:
@@ -9,8 +9,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      PLUGIN_NAME: EconomyShopJava-1.0.0.jar
+      PAPER_API_URL: https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/1.21.1-R0.1-SNAPSHOT/paper-api-1.21.1-R0.1-SNAPSHOT.jar
+
     steps:
-    - name: Checkout code
+    - name: Checkout
       uses: actions/checkout@v4
 
     - name: Set up JDK 21
@@ -19,18 +23,26 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew || true
+    - name: Download Paper API
+      run: |
+        curl -L "$PAPER_API_URL" -o paper-api.jar
+        ls -l paper-api.jar
 
-    - name: Build plugin
-      run: ./gradlew clean build --no-daemon
+    - name: Compile sources with javac
+      run: |
+        mkdir -p out
+        # 루트에 있는 모든 .java를 패키지 경로로 컴파일
+        javac -cp paper-api.jar -d out $(git ls-files '*.java')
 
-    - name: Upload built jar
+    - name: Add plugin.yml & config.yml into jar
+      run: |
+        cp plugin.yml out/
+        [ -f config.yml ] && cp config.yml out/ || true
+        cd out
+        jar cf "../$PLUGIN_NAME" *
+
+    - name: Upload jar artifact
       uses: actions/upload-artifact@v4
       with:
         name: EconomyShopJava-jar
-        path: build/libs/*.jar
-
-
-
-        
+        path: ${{ github.workspace }}/${{ env.PLUGIN_NAME }}
