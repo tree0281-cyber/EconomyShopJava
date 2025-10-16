@@ -11,7 +11,7 @@ jobs:
 
     env:
       VERSION: "1.21.1"
-      BUILD: "125"
+      BUILD: "180"
       PLUGIN_NAME: "EconomyShopJava-1.0.0.jar"
 
     steps:
