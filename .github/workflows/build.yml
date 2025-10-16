@@ -1,4 +1,4 @@
-name: Build Java Paper Plugin (no Gradle, fixed API URL)
+name: Build Java Paper Plugin (dev-bundle, no Gradle)
 
 on:
   push:
@@ -10,8 +10,9 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      PLUGIN_NAME: EconomyShopJava-1.0.0.jar
-      PAPER_API_URL: https://api.papermc.io/v2/projects/paper/versions/1.21.1/builds/125/downloads/paper-1.21.1-125.jar
+      VERSION: "1.21.1"
+      BUILD: "125"
+      PLUGIN_NAME: "EconomyShopJava-1.0.0.jar"
 
     steps:
     - name: Checkout
@@ -23,28 +24,51 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
 
-    - name: Download Paper API (official API)
+    - name: Download Paper dev-bundle
       run: |
-        echo "Downloading Paper API from official API..."
-        curl -L "$PAPER_API_URL" -o paper-api.jar
-        ls -lh paper-api.jar
+        URL="https://api.papermc.io/v2/projects/paper/versions/${VERSION}/builds/${BUILD}/downloads/paper-${VERSION}-${BUILD}-dev-bundle.zip"
+        echo "Downloading dev-bundle: $URL"
+        curl -fL "$URL" -o dev-bundle.zip
+        unzip -q dev-bundle.zip -d dev
 
-    - name: Compile sources with javac
+        echo "Dev bundle contents:"
+        ls -R dev
+
+    - name: Prepare classpath from dev-bundle
+      id: cp
+      shell: bash
+      run: |
+        # dev-bundle 안에는 paper-api jar와 의존 jar들이 들어있음
+        API_JAR=$(find dev -maxdepth 1 -name "paper-api-*.jar" | head -n1)
+        LIB_DIR=$(find dev -type d -name "libs" | head -n1)
+
+        if [ -z "$API_JAR" ] || [ -z "$LIB_DIR" ]; then
+          echo "Missing API jar or libs dir in dev bundle"; exit 1
+        fi
+
+        # classpath: API + 모든 libs/*.jar
+        CP="$API_JAR:$(echo $LIB_DIR/*.jar | tr ' ' ':')"
+        echo "CLASSPATH=$CP" >> $GITHUB_OUTPUT
+
+        echo "API_JAR: $API_JAR"
+        echo "LIB_DIR: $LIB_DIR"
+
+    - name: Compile sources with javac (using dev-bundle CP)
       run: |
         mkdir -p out
-        SRCS=$(git ls-files '*.java')
-        echo "Compiling sources:"
+        SRCS=$(find . -name "*.java")
+        echo "Sources:"
         echo "$SRCS"
-        javac -Xlint:unchecked -cp paper-api.jar -d out $SRCS
+        javac -Xlint:unchecked -cp "${{ steps.cp.outputs.CLASSPATH }}" -d out $SRCS
 
-    - name: Add plugin.yml & config.yml into jar
+    - name: Add plugin.yml & config.yml and make jar
       run: |
         cp plugin.yml out/
         [ -f config.yml ] && cp config.yml out/ || true
         cd out
-        jar cf "../$PLUGIN_NAME" *
+        jar cf "../${{ env.PLUGIN_NAME }}" *
         cd ..
-        ls -lh "$PLUGIN_NAME"
+        ls -lh "${{ env.PLUGIN_NAME }}"
 
     - name: Upload jar artifact
       uses: actions/upload-artifact@v4
