@@ -1,4 +1,4 @@
-name: Build Java Paper Plugin (no Gradle)
+name: Build Java Paper Plugin (no Gradle, robust)
 
 on:
   push:
@@ -11,7 +11,6 @@ jobs:
 
     env:
       PLUGIN_NAME: EconomyShopJava-1.0.0.jar
-      PAPER_API_URL: https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/1.21.1-R0.1-SNAPSHOT/paper-api-1.21.1-R0.1-SNAPSHOT.jar
 
     steps:
     - name: Checkout
@@ -23,23 +22,47 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
 
-    - name: Download Paper API
+    - name: Download Paper API (try multiple versions)
+      shell: bash
       run: |
-        curl -L "$PAPER_API_URL" -o paper-api.jar
-        ls -l paper-api.jar
+        set -e
+        URLS=(
+          "https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/1.21.1-R0.1-SNAPSHOT/paper-api-1.21.1-R0.1-SNAPSHOT.jar"
+          "https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/1.21-R0.1-SNAPSHOT/paper-api-1.21-R0.1-SNAPSHOT.jar"
+          "https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/1.20.6-R0.1-SNAPSHOT/paper-api-1.20.6-R0.1-SNAPSHOT.jar"
+        )
+        for u in "${URLS[@]}"; do
+          echo "Trying: $u"
+          if curl -sSfL "$u" -o paper-api.jar ; then
+            echo "Downloaded Paper API from: $u"
+            break
+          fi
+        done
+        test -s paper-api.jar || { echo "Failed to download Paper API JAR"; exit 1; }
+        file paper-api.jar
+        ls -lh paper-api.jar
 
     - name: Compile sources with javac
+      shell: bash
       run: |
+        set -e
         mkdir -p out
-        # 루트에 있는 모든 .java를 패키지 경로로 컴파일
-        javac -cp paper-api.jar -d out $(git ls-files '*.java')
+        # 루트에 있는 모든 .java 컴파일 (패키지 경로로 out에 생성됨)
+        SRCS=$(git ls-files '*.java')
+        echo "Sources:"
+        echo "$SRCS"
+        javac -Xlint:deprecation -Xlint:unchecked -cp paper-api.jar -d out $SRCS
 
     - name: Add plugin.yml & config.yml into jar
+      shell: bash
       run: |
+        set -e
         cp plugin.yml out/
         [ -f config.yml ] && cp config.yml out/ || true
         cd out
         jar cf "../$PLUGIN_NAME" *
+        cd ..
+        ls -lh "$PLUGIN_NAME"
 
     - name: Upload jar artifact
       uses: actions/upload-artifact@v4
